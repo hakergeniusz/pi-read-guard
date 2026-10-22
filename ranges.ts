@@ -41,10 +41,12 @@ export function subtract(want: Range, have: Range[]): Range[] {
 export function coveredFractionOf(want: Range, have: Range[]): number {
 	const span = want.end === Infinity ? 0 : want.end - want.start + 1;
 	if (span === 0) {
-		// Unknown-length request (no limit). It overlaps a recorded range only if
-		// that range reaches as far as the request's first line — asking for
-		// 500-EOF is not covered by having 1-100.
-		return merge(have).some((h) => h.end >= want.start) ? 1 : 0;
+		// Unknown-length request (no limit). It is fully covered only if we have
+		// a recorded range that extends to Infinity starting at or before
+		// want.start — e.g. having 1-2000 does NOT cover 1-EOF (lines 2001+
+		// are unknown). Returning 0 here avoids falsely blocking reads for
+		// content that isn't actually in context.
+		return merge(have).some((h) => h.end === Infinity && h.start <= want.start) ? 1 : 0;
 	}
 	let covered = 0;
 	for (const h of merge(have)) {
@@ -68,9 +70,12 @@ export function describeRange(r: Range): string {
  *   (the tool's own line/byte cap kicked in)
  * - "[216 more lines in file. Use offset=85 to continue.]" -> the requested
  *   `limit` was reached, so the range ends there
+ * - "[Line 1 is 60.0KB, exceeds 50.0KB limit. Use bash: ...]" -> 0: the tool
+ *   delivered nothing at all, so no line of that file is in context
  * - no hint -> the request ran to end of file
  */
 export function parseRangeEnd(text: string, start: number, limit: number | undefined): number {
+	if (/\[\s*Line \d+ is .*exceeds .* limit/.test(text)) return start - 1;
 	const showing = /\[\s*Showing lines (\d+)-(\d+) of/.exec(text);
 	if (showing) return Number(showing[2]);
 	if (limit !== undefined && /\[(\d+) more lines? in file/.test(text)) {

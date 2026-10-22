@@ -13,9 +13,20 @@
  *   so "re-read after you edited it" always works.
  * - A partially covered request is only blocked when most of it is redundant;
  *   the block message names the exact uncovered sub-ranges to request instead.
+ * - A request for an open-ended range ("the whole file, 1-EOF") is only
+ *   covered by a range that itself reaches EOF. Having lines 1-2000 does not
+ *   mean lines 2001+ are in context, so 1-EOF stays readable.
+ * - A read that delivered nothing (a single line over the byte limit) claims
+ *   nothing.
  * - Compaction discards the old transcript, so all records are dropped then.
  * - The record is the *actual* returned range, parsed from the read tool's own
  *   "[Showing lines X-Y of N...]" hint rather than guessed from the arguments.
+ *
+ * "In context" means "in the transcript the model is looking at". Another
+ * extension that trims tool results before the request leaves would break that
+ * promise, so pi-result-cap leaves `read` results alone: a trimmed read loses
+ * the middle of a file, and this extension would then refuse to re-read the
+ * range it believes is already there.
  *
  * Block messages are deliberately terse: they are themselves fresh tokens, and
  * the model only needs the path, the lines, and what to do instead.
